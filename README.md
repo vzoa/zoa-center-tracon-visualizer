@@ -14,7 +14,10 @@ This application combines the Oakland Center (ZOA) and TRACON airspace visualize
 ## Features
 
 - Interactive map visualization using Mapbox GL
-- Airspace sector display
+- Airspace sector display with customizable colors
+- Configuration switching for different flow states (SFOW/SFOE, airport configs)
+- Shareable URLs - copy a link that restores your current sector and configuration state
+- Persistent state saved to browser localStorage
 - SolidJS-powered interface with TailwindCSS styling
 
 ## Installation

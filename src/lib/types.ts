@@ -92,21 +92,28 @@ export type TraconAirspaceConfigDependentGroup =
   | 'Area C'
   | 'Area D';
 
-export type TraconAirspaceConfig =
-  | 'FATN'
-  | 'FATS'
-  | 'RNON'
-  | 'RNOS'
-  | 'SMFN'
-  | 'SMFS'
-  | 'SFOW'
-  | 'SFOE'
-  | 'SFO10'
-  | 'OAKE'
-  | 'SJCE'
-  | '';
+/** Valid TraconAirspaceConfig values - single source of truth */
+export const TRACON_AIRSPACE_CONFIGS = [
+  'FATN',
+  'FATS',
+  'RNON',
+  'RNOS',
+  'SMFN',
+  'SMFS',
+  'SFOW',
+  'SFOE',
+  'SFO10',
+  'OAKE',
+  'SJCE',
+  '',
+] as const;
 
-export type TraconAirportConfig = 'SFOW' | 'SFO19' | 'SFO10' | 'OAKW' | 'OAKE' | 'SJCW' | 'SJCE';
+export type TraconAirspaceConfig = (typeof TRACON_AIRSPACE_CONFIGS)[number];
+
+/** Valid TraconAirportConfig values - single source of truth */
+export const TRACON_AIRPORT_CONFIGS = ['SFOW', 'SFO19', 'SFO10', 'OAKW', 'OAKE', 'SJCW', 'SJCE'] as const;
+
+export type TraconAirportConfig = (typeof TRACON_AIRPORT_CONFIGS)[number];
 
 export type TraconSectorName =
   | 'Nugget'

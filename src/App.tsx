@@ -1,5 +1,5 @@
 import { makePersisted } from '@solid-primitives/storage';
-import { Accessor, Component, createEffect, createMemo, createSignal, DEV, For, Show, untrack } from 'solid-js';
+import { Accessor, Component, createEffect, createMemo, createSignal, DEV, For, Setter, Show, untrack } from 'solid-js';
 import { DEFAULT_MAP_STYLE, DEFAULT_SETTINGS, DEFAULT_VIEWPORT } from '~/lib/defaults';
 import { Section, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui-core';
 import { MapStyleSelector } from '~/components/MapStyleSelector';
@@ -39,6 +39,14 @@ import { logIfDev } from '~/lib/dev';
 import { InfoPopup } from '~/components/InfoPopup';
 import { ProceduresDialog } from '~/components/ProceduresDialog';
 import { ArrivalPoints } from '~/components/ArrivalPoints';
+import { ShareButton } from '~/components/ShareButton';
+import {
+  getURLStateParam,
+  decodeStateFromURL,
+  applyURLStateToDefaults,
+  getURLConfigState,
+  DEFAULT_CONFIGS,
+} from '~/lib/urlState';
 
 const createCenterDefaultState = (area: CenterAreaDefinition): CenterAirspaceDisplayState => ({
   name: area.name,
@@ -103,13 +111,33 @@ const App: Component = () => {
 
   const [activeTab, setActiveTab] = createSignal<'tracon' | 'center'>('tracon');
 
-  const [allStore, setAllStore] = makePersisted(
-    createStore<AppDisplayState>({
-      centerDisplayStates: CENTER_POLY_DEFINITIONS.map(createCenterDefaultState),
-      areaDisplayStates: TRACON_POLY_DEFINITIONS.map((p) => createTraconDefaultState(p.polys)),
-    }),
-    { name: 'currentDisplay' },
-  );
+  // Check for URL state parameter and decode it
+  const urlStateParam = getURLStateParam();
+  const decodedURLState = decodeStateFromURL(urlStateParam);
+  const urlConfigState = getURLConfigState(decodedURLState);
+
+  // Create default state
+  const defaultDisplayState: AppDisplayState = {
+    centerDisplayStates: CENTER_POLY_DEFINITIONS.map(createCenterDefaultState),
+    areaDisplayStates: TRACON_POLY_DEFINITIONS.map((p) => createTraconDefaultState(p.polys)),
+  };
+
+  // Create persisted store (will load from localStorage if available)
+  const [allStore, setAllStore] = makePersisted(createStore<AppDisplayState>(defaultDisplayState), {
+    name: 'currentDisplay',
+  });
+
+  // If URL state exists, override whatever makePersisted loaded from localStorage
+  if (decodedURLState) {
+    const urlDisplayState = applyURLStateToDefaults(
+      decodedURLState,
+      CENTER_POLY_DEFINITIONS,
+      TRACON_POLY_DEFINITIONS,
+      createCenterDefaultState,
+      createTraconDefaultState,
+    );
+    setAllStore(urlDisplayState);
+  }
 
   const [popup, setPopup] = createStore<PopupState>({
     hoveredPolys: [],
@@ -167,18 +195,42 @@ const App: Component = () => {
     });
   };
 
-  const [bayConfig, setBayConfig] = makePersisted(createSignal<TraconAirspaceConfig>('SFOW'), {
-    name: 'bayConfig',
-  });
-  const [sfoConfig, setSfoConfig] = makePersisted(createSignal<TraconAirportConfig>('SFOW'), {
-    name: 'sfoConfig',
-  });
-  const [oakConfig, setOakConfig] = makePersisted(createSignal<TraconAirportConfig>('OAKW'), {
-    name: 'oakConfig',
-  });
-  const [sjcConfig, setSjcConfig] = makePersisted(createSignal<TraconAirportConfig>('SJCW'), {
-    name: 'sjcConfig',
-  });
+  // Helper to create a persisted config signal that uses URL state if available
+  // makePersisted ignores initial value if localStorage has data, so we must
+  // explicitly set the value after creation when URL state is present
+  const createConfigSignal = <T,>(
+    defaultValue: T,
+    urlValue: T | undefined,
+    storageName: string,
+  ): [Accessor<T>, Setter<T>] => {
+    const [get, set] = makePersisted(createSignal<T>(defaultValue), { name: storageName });
+    // If URL state exists, override whatever makePersisted loaded from localStorage
+    if (urlValue !== undefined) {
+      set(() => urlValue);
+    }
+    return [get, set];
+  };
+
+  const [bayConfig, setBayConfig] = createConfigSignal<TraconAirspaceConfig>(
+    DEFAULT_CONFIGS.bayConfig,
+    urlConfigState.bayConfig,
+    'bayConfig',
+  );
+  const [sfoConfig, setSfoConfig] = createConfigSignal<TraconAirportConfig>(
+    DEFAULT_CONFIGS.sfoConfig,
+    urlConfigState.sfoConfig,
+    'sfoConfig',
+  );
+  const [oakConfig, setOakConfig] = createConfigSignal<TraconAirportConfig>(
+    DEFAULT_CONFIGS.oakConfig,
+    urlConfigState.oakConfig,
+    'oakConfig',
+  );
+  const [sjcConfig, setSjcConfig] = createConfigSignal<TraconAirportConfig>(
+    DEFAULT_CONFIGS.sjcConfig,
+    urlConfigState.sjcConfig,
+    'sjcConfig',
+  );
 
   const sfoOptions = createMemo(() => {
     if (bayConfig() === 'SFOW') {
@@ -229,15 +281,15 @@ const App: Component = () => {
     const currentBayConfig = bayConfig();
 
     if (currentBayConfig === 'SFOW') {
-      setSfoConfig('SFOW');
+      setSfoConfig(DEFAULT_CONFIGS.sfoConfig);
 
       if (!isInitialLoad) {
-        setOakConfig('OAKW');
-        setSjcConfig('SJCW');
+        setOakConfig(DEFAULT_CONFIGS.oakConfig);
+        setSjcConfig(DEFAULT_CONFIGS.sjcConfig);
       }
     } else if (currentBayConfig === 'SFOE') {
       const currentSfoConfig = untrack(sfoConfig);
-      if (currentSfoConfig === 'SFOW' || currentSfoConfig == null) {
+      if (currentSfoConfig === DEFAULT_CONFIGS.sfoConfig || currentSfoConfig == null) {
         setSfoConfig('SFO19');
       }
 
@@ -507,6 +559,15 @@ const App: Component = () => {
 
         <div class="absolute top-5 left-5 z-50 flex space-x-2">
           <SettingsDialog settings={settings} setSettings={setSettings} />
+          <ShareButton
+            store={allStore}
+            centerDefaults={CENTER_POLY_DEFINITIONS}
+            traconDefaults={TRACON_POLY_DEFINITIONS}
+            bayConfig={bayConfig}
+            sfoConfig={sfoConfig}
+            oakConfig={oakConfig}
+            sjcConfig={sjcConfig}
+          />
         </div>
 
         <MapReset viewport={viewport()} setViewport={setViewport} />
