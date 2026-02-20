@@ -51,7 +51,7 @@ export const InfoPopup: Component<InfoPopupProps> = (props) => {
                     }}
                   >
                     {polyInfo.poly.source
-                      ? `${polyInfo.poly.source.replace(/_[A-Z]+$/, '')} [${SECTOR_AREA_MAP.get(polyInfo.poly.source.replace(/_[A-Z]+$/, '')) ?? ''}]`
+                      ? `${polyInfo.poly.source.replace(/_[A-Z]+$/, '')} [${(SECTOR_AREA_MAP.get(polyInfo.poly.source.replace(/_[A-Z]+$/, '')) ?? '').replace('Area ', '')}]`
                       : ''}
                   </td>
                   <td class="font-mono w-12 text-center ml-3">
