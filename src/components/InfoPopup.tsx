@@ -1,5 +1,6 @@
 import { Component, createMemo, For, Show } from 'solid-js';
 import { FillPaint, PopupState, Settings } from '~/lib/types';
+import { SECTOR_AREA_MAP } from '~/lib/config';
 import { comparePolyAlts, getFillColor, isTransparentFill } from '~/lib/geojson';
 import { createMousePosition } from '@solid-primitives/mouse';
 import { cn } from '~/lib/utils';
@@ -49,7 +50,9 @@ export const InfoPopup: Component<InfoPopupProps> = (props) => {
                         : getFillColor(polyInfo.poly.layer?.paint as FillPaint),
                     }}
                   >
-                    {polyInfo.poly.source ? polyInfo.poly.source.replace(/_[A-Z]+$/, '') : ''}
+                    {polyInfo.poly.source
+                      ? `${polyInfo.poly.source.replace(/_[A-Z]+$/, '')} [${SECTOR_AREA_MAP.get(polyInfo.poly.source.replace(/_[A-Z]+$/, '')) ?? ''}]`
+                      : ''}
                   </td>
                   <td class="font-mono w-12 text-center ml-3">
                     {polyInfo.poly.properties?.minAlt === 0

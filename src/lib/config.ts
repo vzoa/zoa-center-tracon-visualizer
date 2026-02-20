@@ -754,3 +754,12 @@ export const TRACON_POLY_DEFINITIONS: TraconPolyDefinition[] = [
   { name: 'Area D', polys: D_POLYS },
   { name: 'RAPCON', polys: MIL_POLYS },
 ];
+
+export const SECTOR_AREA_MAP = new Map<string, string>([
+  ...CENTER_POLY_DEFINITIONS.flatMap((area) =>
+    area.sectors.map((s) => [s.sectorName, area.name] as const),
+  ),
+  ...TRACON_POLY_DEFINITIONS.flatMap((def) =>
+    def.polys.sectorConfigs.map((s) => [s.sectorName, def.name] as const),
+  ),
+]);
