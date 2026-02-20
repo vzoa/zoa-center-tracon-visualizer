@@ -123,6 +123,11 @@ export const MAP_STYLES: MapStyle[] = [
     disabled: false,
   },
   {
+    value: 'mapbox://styles/mapbox/dark-v11',
+    label: 'World Dark',
+    disabled: false,
+  },
+  {
     value: 'mapbox://styles/kengreim/clw6l16rw002o01q1cq9h43ft',
     label: 'Satellite Low Opacity',
     disabled: false,
