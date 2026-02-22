@@ -85,8 +85,8 @@ export interface CenterAirspaceDisplayState {
 export type TraconAirspaceConfigDependentGroup =
   | 'RAPCON'
   | 'FAT'
-  | 'RNO'
-  | 'SMF'
+  | 'Area E NV'
+  | 'Area E CA'
   | 'Area A'
   | 'Area B'
   | 'Area C'

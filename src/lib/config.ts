@@ -316,7 +316,7 @@ export const CENTER_POLY_DEFINITIONS = [
 // Tracon Maps
 ///////////////////////////////////////////////////
 const E_NV_POLYS: TraconAreaPolys = {
-  name: 'RNO',
+  name: 'Area E NV',
   defaultConfig: 'RNOS',
   possibleConfigs: ['RNOS', 'RNON'],
   sectorConfigs: [
@@ -344,7 +344,7 @@ const E_NV_POLYS: TraconAreaPolys = {
 };
 
 const E_CA_POLYS: TraconAreaPolys = {
-  name: 'SMF',
+  name: 'Area E CA',
   defaultConfig: 'SMFS',
   possibleConfigs: ['SMFS', 'SMFN'],
   sectorConfigs: [
@@ -751,8 +751,8 @@ const MIL_POLYS: TraconAreaPolys = {
 
 export const TRACON_POLY_DEFINITIONS: TraconPolyDefinition[] = [
   { name: 'FAT', polys: FAT_POLYS },
-  { name: 'RNO', polys: E_NV_POLYS },
-  { name: 'SMF', polys: E_CA_POLYS },
+  { name: 'Area E NV', polys: E_NV_POLYS },
+  { name: 'Area E CA', polys: E_CA_POLYS },
   { name: 'Area A', polys: A_POLYS },
   { name: 'Area B', polys: B_POLYS },
   { name: 'Area C', polys: C_POLYS },

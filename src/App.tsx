@@ -123,6 +123,28 @@ const App: Component = () => {
     areaDisplayStates: TRACON_POLY_DEFINITIONS.map((p) => createTraconDefaultState(p.polys)),
   };
 
+  // Invalidate persisted state if area names don't match current config
+  // (handles renames without requiring users to clear localStorage)
+  const storedDisplay = localStorage.getItem('currentDisplay');
+  if (storedDisplay) {
+    try {
+      const parsed = JSON.parse(storedDisplay) as AppDisplayState;
+      const expectedCenterNames = CENTER_POLY_DEFINITIONS.map((a) => a.name);
+      const expectedTraconNames = TRACON_POLY_DEFINITIONS.map((p) => p.polys.name);
+      const storedCenterNames = parsed.centerDisplayStates?.map((s) => s.name) ?? [];
+      const storedTraconNames = parsed.areaDisplayStates?.map((s) => s.name) ?? [];
+
+      if (
+        expectedCenterNames.some((name, i) => storedCenterNames[i] !== name) ||
+        expectedTraconNames.some((name, i) => storedTraconNames[i] !== name)
+      ) {
+        localStorage.removeItem('currentDisplay');
+      }
+    } catch {
+      localStorage.removeItem('currentDisplay');
+    }
+  }
+
   // Create persisted store (will load from localStorage if available)
   const [allStore, setAllStore] = makePersisted(createStore<AppDisplayState>(defaultDisplayState), {
     name: 'currentDisplay',
@@ -484,7 +506,7 @@ const App: Component = () => {
 
               <SectorDisplayWithControls
                 displayType="tracon"
-                airspaceGroup={'SMF'}
+                airspaceGroup={'Area E CA'}
                 airspaceConfigOptions={['SMFS', 'SMFN']}
                 store={allStore}
                 setStore={setAllStore}
@@ -492,7 +514,7 @@ const App: Component = () => {
 
               <SectorDisplayWithControls
                 displayType="tracon"
-                airspaceGroup={'RNO'}
+                airspaceGroup={'Area E NV'}
                 airspaceConfigOptions={['RNOS', 'RNON']}
                 store={allStore}
                 setStore={setAllStore}
