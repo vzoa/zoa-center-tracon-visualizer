@@ -29,6 +29,7 @@ import MapGL from 'solid-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 import { BaseMaps } from '~/components/BaseMaps';
+import { BaseMapColorSync } from '~/components/BaseMapColorSync';
 import { GeojsonPolySources } from '~/components/GeojsonPolySources';
 import { GeojsonPolyLayers } from '~/components/GeojsonPolyLayers';
 import { SectorDisplayWithControls } from '~/components/SectorDisplayWithControls';
@@ -585,6 +586,7 @@ const App: Component = () => {
           cursorStyle={cursor()}
         >
           <BaseMaps persistedMapsState={persistedBaseMaps} mountedMapsState={mountedBaseMaps} />
+          <BaseMapColorSync isDark={mapStyle().label === 'World Dark'} />
           <GeojsonPolySources sources={allSources} />
           <GeojsonPolyLayers displayStateStore={allStore} type="tracon" allPolys={TRACON_POLY_DEFINITIONS} />
           <GeojsonPolyLayers displayStateStore={allStore} type="center" />
