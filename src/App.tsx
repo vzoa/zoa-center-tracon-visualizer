@@ -30,6 +30,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 import { BaseMaps } from '~/components/BaseMaps';
 import { BaseMapColorSync } from '~/components/BaseMapColorSync';
+import { StyleSwitchFix } from '~/components/StyleSwitchFix';
 import { GeojsonPolySources } from '~/components/GeojsonPolySources';
 import { GeojsonPolyLayers } from '~/components/GeojsonPolyLayers';
 import { SectorDisplayWithControls } from '~/components/SectorDisplayWithControls';
@@ -607,6 +608,7 @@ const App: Component = () => {
           onMouseMove={altitudeHover}
           cursorStyle={cursor()}
         >
+          <StyleSwitchFix />
           <BaseMaps persistedMapsState={persistedBaseMaps} mountedMapsState={mountedBaseMaps} />
           <BaseMapColorSync isDark={mapStyle().label === 'World Dark'} />
           <GeojsonPolySources sources={allSources} />

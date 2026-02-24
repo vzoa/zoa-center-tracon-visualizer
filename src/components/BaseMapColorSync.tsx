@@ -6,18 +6,25 @@ import { BASE_MAPS } from '~/lib/config';
  * Syncs map layer colors with the current map style (light vs dark).
  * Must be rendered inside <MapGL>.
  *
- * Uses the map's 'idle' event to apply paint properties AFTER
- * solid-map-gl finishes its style transition (setStyle + layer re-insertion),
- * avoiding the race condition where setPaintProperty is called on
- * layers that have been temporarily removed during a style switch.
+ * Uses 'idle' to check for layers needing color updates, but only
+ * runs the actual paint logic when an external style change has
+ * occurred (style switch, layer add/remove). Ignores styledata
+ * events caused by our own setPaintProperty calls to avoid a
+ * feedback loop.
  */
 export const BaseMapColorSync: Component<{ isDark: boolean }> = (props) => {
   const [ctx] = useMapContext();
 
   createEffect(() => {
     const dark = props.isDark;
+    let dirty = true;
+    let applying = false;
 
     const apply = () => {
+      if (!dirty) return;
+      applying = true;
+      dirty = false;
+
       // Base map lines
       const baseColor = dark ? '#ffffff' : '#000000';
       for (const bm of BASE_MAPS) {
@@ -39,11 +46,25 @@ export const BaseMapColorSync: Component<{ isDark: boolean }> = (props) => {
           ctx.map.setPaintProperty(layer.id, 'circle-stroke-color', circleStrokeColor);
         }
       }
+
+      applying = false;
     };
 
-    // Re-apply on every idle event to catch newly enabled/added layers
+    const markDirty = () => {
+      if (!applying) dirty = true;
+    };
+
+    // Mark dirty on structural style changes (addLayer, removeLayer, setStyle)
+    // but not from our own setPaintProperty calls
+    ctx.map.on('styledata', markDirty);
+
+    // Check on idle — cheap no-op when not dirty
     ctx.map.on('idle', apply);
-    onCleanup(() => ctx.map.off('idle', apply));
+
+    onCleanup(() => {
+      ctx.map.off('styledata', markDirty);
+      ctx.map.off('idle', apply);
+    });
   });
 
   return null;
