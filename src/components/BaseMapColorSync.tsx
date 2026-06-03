@@ -1,6 +1,5 @@
 import { Component, createEffect, onCleanup } from 'solid-js';
 import { useMapContext } from 'solid-map-gl';
-import { BASE_MAPS } from '~/lib/config';
 
 /**
  * Syncs map layer colors with the current map style (light vs dark).
@@ -24,14 +23,6 @@ export const BaseMapColorSync: Component<{ isDark: boolean }> = (props) => {
       if (!dirty) return;
       applying = true;
       dirty = false;
-
-      // Base map lines
-      const baseColor = dark ? '#ffffff' : '#000000';
-      for (const bm of BASE_MAPS) {
-        if (ctx.map.getLayer(bm.name)) {
-          ctx.map.setPaintProperty(bm.name, 'line-color', baseColor);
-        }
-      }
 
       // Procedure layers (text labels, waypoint circles, line casings)
       const textColor = dark ? '#ffffff' : '#000000';

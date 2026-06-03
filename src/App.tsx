@@ -4,14 +4,13 @@ import { DEFAULT_MAP_STYLE, DEFAULT_SETTINGS, DEFAULT_VIEWPORT } from '~/lib/def
 import { Section, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui-core';
 import { MapStyleSelector } from '~/components/MapStyleSelector';
 import { createStore, produce } from 'solid-js/store';
-import { BASE_MAPS, CENTER_POLY_DEFINITIONS, TRACON_POLY_DEFINITIONS } from '~/lib/config';
+import { VNAS_VIDEO_MAPS, VNAS_GEO_MAPS, VNAS_VIDEO_MAP_BASE_URL, CENTER_POLY_DEFINITIONS, TRACON_POLY_DEFINITIONS } from '~/lib/config';
 import {
   CenterAirspaceDisplayState,
   AppDisplayState,
   CenterAreaDefinition,
   FillPaint,
-  MountedBaseMapState,
-  PersistedBaseMapState,
+  PersistedVnasMapState,
   PopupState,
   Settings,
   Procedure,
@@ -28,7 +27,8 @@ import { MapReset } from '~/components/MapReset';
 import MapGL from 'solid-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-import { BaseMaps } from '~/components/BaseMaps';
+import { VnasVideoMaps } from '~/components/VnasVideoMaps';
+import { EramGeoMapLayers } from '~/components/EramGeoMapLayers';
 import { BaseMapColorSync } from '~/components/BaseMapColorSync';
 import { StyleSwitchFix } from '~/components/StyleSwitchFix';
 import { GeojsonPolySources } from '~/components/GeojsonPolySources';
@@ -38,9 +38,12 @@ import { SettingsDialog } from '~/components/SettingsDialog';
 import { GeoJSONFeature, MapMouseEvent } from 'mapbox-gl';
 import { getUniqueLayers, isTransparentFill, getGeojsonSources } from '~/lib/geojson';
 import { logIfDev } from '~/lib/dev';
+import { Pencil, Trash2 } from 'lucide-solid';
 import { InfoPopup } from '~/components/InfoPopup';
 import { TopMenuBar, OpenMenu } from '~/components/TopMenuBar';
 import { AviationOverlayLayers } from '~/components/AviationOverlayLayers';
+import { DrawingLayer, DrawingStroke } from '~/components/DrawingLayer';
+import { ChartOverlay } from '~/components/ChartOverlay';
 import { ShareButton } from '~/components/ShareButton';
 import { Coord, Route, RouteInput, RouteProcedureEntry } from '~/lib/routeTypes';
 import { buildRoute } from '~/lib/routeBuilder';
@@ -94,20 +97,68 @@ const App: Component = () => {
     name: 'mapStyle',
   });
 
-  const [persistedBaseMaps, setPersistedBaseMaps] = makePersisted(
-    createStore<PersistedBaseMapState[]>(
-      BASE_MAPS.map((m) => ({
-        id: m.name,
-        baseMap: m,
+  // Invalidate persisted vnasMaps when the config changes (new IDs, or map metadata schema changed).
+  // Also refreshes map metadata (name/facility/starsId/bcg) from current config while preserving checked state.
+  const storedVnasMaps = localStorage.getItem('vnasMaps');
+  if (storedVnasMaps) {
+    try {
+      const parsed = JSON.parse(storedVnasMaps) as PersistedVnasMapState[];
+      const configById = new Map(VNAS_VIDEO_MAPS.map((m) => [m.id, m]));
+      const storedIds = new Set(parsed.map((m) => m.id));
+      const idMismatch =
+        configById.size !== storedIds.size ||
+        VNAS_VIDEO_MAPS.some((m) => !storedIds.has(m.id));
+      if (idMismatch) {
+        localStorage.removeItem('vnasMaps');
+      } else {
+        // Refresh map metadata from current config, preserve checked state
+        const refreshed = parsed.map((entry) => {
+          const current = configById.get(entry.id);
+          return current ? { ...entry, map: current } : entry;
+        });
+        localStorage.setItem('vnasMaps', JSON.stringify(refreshed));
+      }
+    } catch {
+      localStorage.removeItem('vnasMaps');
+    }
+  }
+
+  const [persistedVnasMaps, setPersistedVnasMaps] = makePersisted(
+    createStore<PersistedVnasMapState[]>(
+      VNAS_VIDEO_MAPS.map((m) => ({
+        id: m.id,
+        map: m,
         checked: m.showDefault,
       })),
     ),
-    { name: 'baseMaps' },
+    { name: 'vnasMaps' },
   );
 
-  const [mountedBaseMaps, setMountedBaseMaps] = createStore<MountedBaseMapState[]>(
-    persistedBaseMaps.map((m) => ({ id: m.baseMap.name, hasMounted: m.checked })),
-  );
+  // eramFeatures: GeoMap name → all loaded GeoJSON features (union of all mapIds files).
+  // undefined = not loaded; [] = loading in progress.
+  const [eramFeatures, setEramFeatures] = createStore<Record<string, object[]>>({});
+  // eramSelectedBcg: GeoMap name → active 1-based BCG filter values.
+  // bcgMenu[N] (0-based) corresponds to bcg value N+1 in the GeoJSON feature properties.
+  const [eramSelectedBcg, setEramSelectedBcg] = createStore<Record<string, number[]>>({});
+  const [eramColors, setEramColors] = createStore<Record<string, string>>({});
+  const [eramBold, setEramBold] = createStore<Record<string, boolean>>({});
+
+  // Defined outside <For> to avoid async closure issues with SolidJS reactivity.
+  const loadEramGeoMap = async (name: string, mapIds: string[]) => {
+    setEramFeatures(name, []);
+    for (const id of mapIds) {
+      try {
+        const fc = await fetch(`${VNAS_VIDEO_MAP_BASE_URL}/${id}.geojson`).then((r) => r.json());
+        const incoming: object[] = fc.features ?? [];
+        if (incoming.length > 0) {
+          const current = untrack(() => eramFeatures[name] ?? []) as object[];
+          setEramFeatures(name, [...current, ...incoming]);
+        }
+      } catch { /* skip failed files */ }
+    }
+  };
+  const [vnasColors, setVnasColors] = createStore<Record<string, string>>({});
+  const [vnasBold, setVnasBold] = createStore<Record<string, boolean>>({});
 
   const [cursor, setCursor] = createSignal('grab');
 
@@ -190,6 +241,25 @@ const App: Component = () => {
   const [displayedRoute, setDisplayedRoute] = createSignal<Route | null>(null);
   const [is3D, setIs3D] = createSignal(false);
 
+  // Drawing (pen tool) — session-only
+  const [isDrawing, setIsDrawing] = createSignal(false);
+  const [drawingStrokes, setDrawingStrokes] = createSignal<DrawingStroke[]>([]);
+  const [drawColor, setDrawColor] = createSignal('#ef4444');
+  const [drawWidth, setDrawWidth] = createSignal(3);
+  const [drawOpacity, setDrawOpacity] = createSignal(1.0);
+
+  // Chart overlays — visibility session-only, opacity persisted
+  // FAA ArcGIS tile services (publicly hosted, always current, no local server needed).
+  // ArcGIS tile URL format: tile/{z}/{y}/{x} — Mapbox replaces {z}/{x}/{y} by name correctly.
+  const IFR_LOW_TILE_URL = 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}';
+  const IFR_HIGH_TILE_URL = 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_High/MapServer/tile/{z}/{y}/{x}';
+  const VFR_TILE_URL = 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}';
+
+  const [activeChart, setActiveChart] = createSignal<'ifr-low' | 'ifr-high' | 'vfr' | null>(null);
+  const [chartOpacity, setChartOpacity] = makePersisted(createSignal(0.85), {
+    name: 'chartOpacity',
+  });
+
   const toggle3D = () => {
     const newIs3D = !is3D();
     setIs3D(newIs3D);
@@ -201,6 +271,7 @@ const App: Component = () => {
   };
 
   const altitudeHover = (evt: MapMouseEvent) => {
+    if (isDrawing()) return;
     if (is3D()) {
       setPopup('vis', false);
       return;
@@ -238,7 +309,8 @@ const App: Component = () => {
   };
 
   createEffect(() => {
-    if (popup.vis) setCursor('crosshair');
+    if (isDrawing()) setCursor('crosshair');
+    else if (popup.vis) setCursor('crosshair');
     else setCursor('grab');
   });
 
@@ -507,30 +579,187 @@ const App: Component = () => {
           </Section>
 
           <Section header="Base Maps">
-            <div class="flex flex-col space-y-1">
-              <For each={persistedBaseMaps}>
-                {(m) => (
-                  <Checkbox
-                    label={m.baseMap.name}
-                    checked={m.checked}
-                    onChange={(val: boolean) => {
-                      setPersistedBaseMaps(
-                        (m1) => m1.id === m.id,
-                        produce((m2) => {
-                          m2.checked = val;
-                        }),
-                      );
-                      let persisted = persistedBaseMaps.find((m1) => m1.id == m.id);
-                      setMountedBaseMaps(
-                        (m1) => m1.id === m.id,
-                        produce((m2) => {
-                          m2.hasMounted = m2.hasMounted || persisted!.checked;
-                        }),
-                      );
-                    }}
-                  />
+            <div class="flex flex-col space-y-2">
+              <For each={(() => {
+                const groups: Record<string, typeof persistedVnasMaps> = {};
+                for (const m of persistedVnasMaps) {
+                  const f = m.map.facility;
+                  if (!groups[f]) groups[f] = [];
+                  groups[f].push(m);
+                }
+                return Object.entries(groups).map(([facility, maps]) => ({ facility, maps }));
+              })()}>
+                {(facGroup) => (
+                  <details>
+                    <summary class="cursor-pointer text-slate-300 text-xs font-semibold select-none mb-1 flex items-center gap-1">
+                      <input
+                        type="color"
+                        value={vnasColors[facGroup.facility] ?? '#94a3b8'}
+                        class="w-4 h-4 rounded cursor-pointer border-0 bg-transparent flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onInput={(e) => setVnasColors(facGroup.facility, e.currentTarget.value)}
+                      />
+                      <button
+                        class={`text-xs px-1 leading-none rounded select-none font-bold ${vnasBold[facGroup.facility] ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setVnasBold(facGroup.facility, !vnasBold[facGroup.facility]); }}
+                      >B</button>
+                      {facGroup.facility} ({facGroup.maps.filter((m) => m.checked).length}/{facGroup.maps.length})
+                    </summary>
+                    <div class="pl-2 space-y-1">
+                      <button
+                        class="text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 mb-1"
+                        onClick={() => {
+                          setPersistedVnasMaps(
+                            (m) => m.map.facility === facGroup.facility,
+                            produce((m) => { m.checked = false; }),
+                          );
+                        }}
+                      >
+                        clear all
+                      </button>
+                      <div class="flex flex-col space-y-1">
+                        <For each={facGroup.maps}>
+                          {(m) => (
+                            <Checkbox
+                              label={m.map.name}
+                              checked={m.checked}
+                              onChange={(val: boolean) => {
+                                setPersistedVnasMaps(
+                                  (m1) => m1.id === m.id,
+                                  produce((m2) => { m2.checked = val; }),
+                                );
+                              }}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </div>
+                  </details>
                 )}
               </For>
+            </div>
+          </Section>
+
+          <Section header="Center Maps (ERAM)">
+            <div class="flex flex-col space-y-2">
+              <For each={VNAS_GEO_MAPS}>
+                {(geoMap) => {
+                  // All labeled bcgMenu slots become buttons. bcgMenu[N] (0-based) corresponds
+                  // to 1-based bcg feature value N+1 in the loaded GeoJSON.
+                  const buttons = geoMap.bcgMenu
+                    .map((label, idx) => ({ label, idx, bcgValue: idx + 1 }))
+                    .filter((b) => b.label !== '');
+                  const isLoaded = () => eramFeatures[geoMap.name] !== undefined;
+                  const activeCount = () => (eramSelectedBcg[geoMap.name] ?? []).length;
+                  return (
+                    <details>
+                      <summary class="cursor-pointer text-slate-300 text-xs font-semibold select-none mb-1 flex items-center gap-1">
+                        <input
+                          type="color"
+                          value={eramColors[geoMap.name] ?? '#94a3b8'}
+                          class="w-4 h-4 rounded cursor-pointer border-0 bg-transparent flex-shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                          onInput={(e) => setEramColors(geoMap.name, e.currentTarget.value)}
+                        />
+                        <button
+                          class={`text-xs px-1 leading-none rounded select-none font-bold ${eramBold[geoMap.name] ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}
+                          onClick={(e) => { e.stopPropagation(); e.preventDefault(); setEramBold(geoMap.name, !eramBold[geoMap.name]); }}
+                        >B</button>
+                        {geoMap.name}
+                        <Show when={isLoaded()}>
+                          {' '}({activeCount()}/{buttons.length})
+                        </Show>
+                      </summary>
+                      <div class="pl-2 pt-1 space-y-1">
+                        <div class="flex gap-1">
+                          <button
+                            class={`text-xs px-1.5 py-0.5 rounded select-none ${
+                              isLoaded()
+                                ? 'bg-emerald-700 text-white hover:bg-red-700'
+                                : 'bg-slate-600 text-slate-300 hover:bg-emerald-700 hover:text-white'
+                            }`}
+                            onClick={() => {
+                              const name = geoMap.name;
+                              if (isLoaded()) {
+                                setEramFeatures(name, undefined!);
+                                setEramSelectedBcg(name, []);
+                              } else {
+                                void loadEramGeoMap(name, geoMap.mapIds);
+                              }
+                            }}
+                          >
+                            {isLoaded() ? 'Unload' : 'Load'}
+                          </button>
+                        </div>
+                        <Show when={isLoaded()}>
+                          <div class="flex flex-wrap gap-1">
+                            <For each={buttons}>
+                              {(btn) => {
+                                const isActive = () =>
+                                  (eramSelectedBcg[geoMap.name] ?? []).includes(btn.bcgValue);
+                                return (
+                                  <button
+                                    class={`text-xs px-1.5 py-0.5 rounded select-none ${
+                                      isActive()
+                                        ? 'bg-sky-600 text-white'
+                                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                    }`}
+                                    onClick={() => {
+                                      const current = eramSelectedBcg[geoMap.name] ?? [];
+                                      if (isActive()) {
+                                        setEramSelectedBcg(geoMap.name, current.filter((v) => v !== btn.bcgValue));
+                                      } else {
+                                        setEramSelectedBcg(geoMap.name, [...current, btn.bcgValue]);
+                                      }
+                                    }}
+                                  >
+                                    {btn.label}
+                                  </button>
+                                );
+                              }}
+                            </For>
+                          </div>
+                        </Show>
+                      </div>
+                    </details>
+                  );
+                }}
+              </For>
+            </div>
+          </Section>
+
+          <Section header="Charts">
+            <div class="flex flex-col space-y-2">
+              <Checkbox
+                label="IFR En Route Low"
+                checked={activeChart() === 'ifr-low'}
+                onChange={(val: boolean) => setActiveChart(val ? 'ifr-low' : null)}
+              />
+              <Checkbox
+                label="IFR En Route High"
+                checked={activeChart() === 'ifr-high'}
+                onChange={(val: boolean) => setActiveChart(val ? 'ifr-high' : null)}
+              />
+              <Checkbox
+                label="VFR Sectional"
+                checked={activeChart() === 'vfr'}
+                onChange={(val: boolean) => setActiveChart(val ? 'vfr' : null)}
+              />
+              <div class="flex items-center space-x-2 pt-1">
+                <span class="text-slate-400 text-xs">Opacity</span>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.05"
+                  class="flex-1 accent-orange-500"
+                  value={chartOpacity()}
+                  onInput={(e) => setChartOpacity(parseFloat(e.currentTarget.value))}
+                />
+                <span class="text-slate-400 text-xs w-8 text-right">
+                  {Math.round(chartOpacity() * 100)}%
+                </span>
+              </div>
             </div>
           </Section>
 
@@ -759,14 +988,78 @@ const App: Component = () => {
         <div class="grow relative">
         <InfoPopup popupState={popup} settings={settings} />
 
-        <div class="absolute top-5 right-5 z-50 flex space-x-2">
-          <MapReset viewport={viewport()} setViewport={setViewport} />
-          <div
-            class="text-gray-700 font-bold text-sm hover:cursor-pointer border border-gray-400 rounded p-1 bg-white/50 hover:bg-gray-300/50 transition select-none"
-            onClick={toggle3D}
-          >
-            {is3D() ? '2D' : '3D'}
+        <div class="absolute top-5 right-5 z-50 flex flex-col items-end space-y-2">
+          {/* Button row */}
+          <div class="flex space-x-2 items-center">
+            <MapReset viewport={viewport()} setViewport={setViewport} />
+            <Show when={drawingStrokes().length > 0}>
+              <div
+                class="flex items-center justify-center text-gray-700 hover:cursor-pointer border border-gray-400 rounded p-1 bg-white/50 hover:bg-red-100/70 transition select-none"
+                onClick={() => setDrawingStrokes([])}
+                title="Clear all drawings"
+              >
+                <Trash2 size={16} />
+              </div>
+            </Show>
+            <div
+              class={`flex items-center justify-center hover:cursor-pointer border rounded p-1 transition select-none ${
+                isDrawing()
+                  ? 'text-red-600 border-red-400 bg-red-100/90 hover:bg-red-200/90'
+                  : 'text-gray-700 border-gray-400 bg-white/50 hover:bg-gray-300/50'
+              }`}
+              onClick={() => setIsDrawing((v) => !v)}
+              title={isDrawing() ? 'Exit drawing mode' : 'Draw on map'}
+            >
+              <Pencil size={16} />
+            </div>
+            <div
+              class="text-gray-700 font-bold text-sm hover:cursor-pointer border border-gray-400 rounded p-1 bg-white/50 hover:bg-gray-300/50 transition select-none"
+              onClick={toggle3D}
+            >
+              {is3D() ? '2D' : '3D'}
+            </div>
           </div>
+
+          {/* Drawing settings panel */}
+          <Show when={isDrawing()}>
+            <div class="bg-white/95 border border-gray-300 rounded-lg shadow-lg p-3 flex flex-col space-y-2 text-xs w-52">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-700 font-medium">Color</span>
+                <input
+                  type="color"
+                  value={drawColor()}
+                  onInput={(e) => setDrawColor(e.currentTarget.value)}
+                  class="w-10 h-6 cursor-pointer rounded border border-gray-300"
+                />
+              </div>
+              <div class="flex items-center space-x-2">
+                <span class="text-gray-700 font-medium w-14">Thickness</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  value={drawWidth()}
+                  onInput={(e) => setDrawWidth(parseInt(e.currentTarget.value))}
+                  class="flex-1 accent-red-500"
+                />
+                <span class="text-gray-500 w-5 text-right">{drawWidth()}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span class="text-gray-700 font-medium w-14">Opacity</span>
+                <input
+                  type="range"
+                  min="0.05"
+                  max="1"
+                  step="0.05"
+                  value={drawOpacity()}
+                  onInput={(e) => setDrawOpacity(parseFloat(e.currentTarget.value))}
+                  class="flex-1 accent-red-500"
+                />
+                <span class="text-gray-500 w-8 text-right">{Math.round(drawOpacity() * 100)}%</span>
+              </div>
+              <p class="text-gray-400 text-xs">Drag on the map to draw</p>
+            </div>
+          </Show>
         </div>
 
         <MapGL
@@ -782,12 +1075,24 @@ const App: Component = () => {
           cursorStyle={cursor()}
         >
           <StyleSwitchFix />
-          <BaseMaps persistedMapsState={persistedBaseMaps} mountedMapsState={mountedBaseMaps} />
+          <ChartOverlay id="ifr-low" tileUrl={IFR_LOW_TILE_URL} visible={activeChart() === 'ifr-low'} opacity={chartOpacity()} />
+          <ChartOverlay id="ifr-high" tileUrl={IFR_HIGH_TILE_URL} visible={activeChart() === 'ifr-high'} opacity={chartOpacity()} />
+          <ChartOverlay id="vfr" tileUrl={VFR_TILE_URL} visible={activeChart() === 'vfr'} opacity={chartOpacity()} />
+          <VnasVideoMaps maps={persistedVnasMaps} colors={vnasColors} bold={vnasBold} />
+          <EramGeoMapLayers geoMaps={VNAS_GEO_MAPS} features={eramFeatures} selectedBcg={eramSelectedBcg} colors={eramColors} bold={eramBold} />
           <BaseMapColorSync isDark={mapStyle().label === 'World Dark'} />
           <GeojsonPolySources sources={allSources} />
           <GeojsonPolyLayers displayStateStore={allStore} type="tracon" allPolys={TRACON_POLY_DEFINITIONS} is3D={is3D} />
           <GeojsonPolyLayers displayStateStore={allStore} type="center" is3D={is3D} />
           <AviationOverlayLayers overlays={overlays()} standaloneFixFeatures={standaloneFixFeatures()} />
+          <DrawingLayer
+            isDrawing={isDrawing()}
+            strokes={drawingStrokes()}
+            onStrokeComplete={(s) => setDrawingStrokes((prev) => [...prev, s])}
+            color={drawColor()}
+            width={drawWidth()}
+            opacity={drawOpacity()}
+          />
         </MapGL>
         </div>
       </div>

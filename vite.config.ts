@@ -8,6 +8,13 @@ export default defineConfig({
   assetsInclude: ["**/*.geojson"],
   server: {
     port: 42635,
+    proxy: {
+      '/chart-tiles': {
+        target: 'http://localhost:42636',
+        changeOrigin: false,
+        rewrite: (path) => path.replace(/^\/chart-tiles/, ''),
+      },
+    },
   },
   build: {
     target: "esnext",

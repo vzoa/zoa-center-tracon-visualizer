@@ -27,6 +27,35 @@ export interface MountedBaseMapState {
   hasMounted: boolean;
 }
 
+export interface VnasVideoMap {
+  facility: string;
+  id: string;
+  starsId: number;
+  name: string;
+  bcg: 'A' | 'B';
+  showDefault: boolean;
+}
+
+export interface VnasMapGroup {
+  facility: string;
+  tcps: string[];
+  mapIds: number[];
+}
+
+export interface VnasGeoMap {
+  name: string;
+  /** Up to 40 entries; indices 0-19 are the main BCG buttons. Empty strings are unused slots. */
+  bcgMenu: string[];
+  /** UUIDs of ERAM filter GeoJSON files. Each file's features carry a `bcg` number (0-based index into bcgMenu). */
+  mapIds: string[];
+}
+
+export interface PersistedVnasMapState {
+  id: string;
+  map: VnasVideoMap;
+  checked: boolean;
+}
+
 export interface Settings {
   popup: {
     showUncheckedSectors: boolean;
