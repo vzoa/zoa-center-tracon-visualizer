@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "ZOA Center and Tracon Airspace Visualizer",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "vite",
     "dev": "vite",
@@ -12,7 +15,7 @@
   "license": "MIT",
   "author": "Ken Greim, Philippe Dellaert",
   "devDependencies": {
-    "@types/node": "^22.19.11",
+    "@types/node": "^24.19.2",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "vite": "^6.4.2",

@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `pnpm run build` - Production build to `dist/`
 - `pnpm run serve` - Preview production build
 
-No linting, formatting, or test tools are configured. TypeScript strict mode is enforced — run `npx tsc --noEmit` to typecheck. Requires Node 22 (`nvm use 22` before running npm/pnpm/tsc).
+No linting, formatting, or test tools are configured. TypeScript strict mode is enforced — run `npx tsc --noEmit` to typecheck. Requires Node 24 (`nvm use 24` before running npm/pnpm/tsc).
 
 ## Environment
 
